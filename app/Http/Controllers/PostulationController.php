@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AcademicProcessWindow;
 use App\Models\Postulation;
 use App\Models\PostulationMember;
 use App\Models\PostulationPriority;
@@ -61,6 +62,10 @@ class PostulationController extends Controller
             abort(403, $this->academicProgress->blockedIdeaBankMessage($student, $activePeriod));
         }
 
+        if ($unavailable = $this->ensureProjectIsPostulable($project, $student)) {
+            return $unavailable;
+        }
+
         if ($student->hasActiveProject()) {
             return redirect()->route('students.projects.approved.index')
                 ->with('error', 'Ya tienes un proyecto activo asignado.');
@@ -117,6 +122,16 @@ class PostulationController extends Controller
     {
         $student = Student::where('user_id', Auth::id())->firstOrFail();
         $project = Project::findOrFail($request->project_id);
+        $activePeriod = AcademicCalendarService::currentActivePeriod();
+
+        if (! $this->academicProgress->canAccessIdeaBank($student, $activePeriod)) {
+            abort(403, $this->academicProgress->blockedIdeaBankMessage($student, $activePeriod));
+        }
+
+        // Debe validarse antes de tocar datos: el borrado de abajo es destructivo.
+        if ($unavailable = $this->ensureProjectIsPostulable($project, $student)) {
+            return $unavailable;
+        }
 
         // Si ya existe una postulación rechazada para este mismo proyecto y este estudiante,
         // la eliminamos ANTES de validar para liberar la prioridad y evitar conflictos UNIQUE
@@ -225,6 +240,26 @@ class PostulationController extends Controller
 
             return back()->with('error', 'Ocurrió un error al procesar tu postulación: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Aplica las mismas reglas del banco de ideas: ventana de selección abierta,
+     * proyecto aprobado y perteneciente al programa del estudiante.
+     */
+    private function ensureProjectIsPostulable(Project $project, Student $student): ?\Illuminate\Contracts\View\View
+    {
+        if (! AcademicCalendarService::currentWindowForProcess(AcademicProcessWindow::PROCESS_IDEA_SELECTION)) {
+            return view(
+                'academic-calendar.unavailable',
+                AcademicCalendarService::unavailableActivityViewData(AcademicProcessWindow::PROCESS_IDEA_SELECTION)
+            );
+        }
+
+        if (! $project->isAvailableForStudent($student)) {
+            abort(403, 'Solo puedes postularte a ideas aprobadas de tu programa académico.');
+        }
+
+        return null;
     }
 
     public function destroy(Postulation $postulation)

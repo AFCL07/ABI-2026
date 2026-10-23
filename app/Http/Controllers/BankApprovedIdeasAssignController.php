@@ -45,8 +45,8 @@ class BankApprovedIdeasAssignController extends Controller
             abort(403, $this->academicProgress->blockedIdeaBankMessage($student, $activeAcademicPeriod));
         }
 
-        if ($project->projectStatus?->name !== 'Aprobado') {
-            abort(403, 'Solo puedes seleccionar ideas que esten en estado Aprobado.');
+        if (! $project->isAvailableForStudent($student)) {
+            abort(403, 'Solo puedes seleccionar ideas aprobadas de tu programa academico.');
         }
 
         $availableStudents = Student::query()
@@ -95,8 +95,8 @@ class BankApprovedIdeasAssignController extends Controller
             'teammate_ids.*' => ['integer', Rule::exists('students', 'id')->where(fn ($q) => $q->where('city_program_id', $student->city_program_id))],
         ]);
 
-        if ($project->projectStatus?->name !== 'Aprobado') {
-            abort(403, 'Este proyecto ya no esta disponible para asignacion.');
+        if (! $project->isAvailableForStudent($student)) {
+            abort(403, 'Este proyecto no esta disponible para asignacion.');
         }
 
         $allowedStatuses = ['Rechazado', 'Devuelto para correccion'];
